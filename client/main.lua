@@ -9,6 +9,9 @@ local vehicleSpawnLoc = Config.VehicleSpawn
 local deliveryVeh = nil
 
 function spawnVeh(x, y, z, w)
+    if Config.Debug then 
+        print('cs-foodjob: Spawning vehicle')
+    end
     local vehModel = GetHashKey(Config.VehicleModel)
     RequestModel(vehModel)
     while not HasModelLoaded(vehModel) do
@@ -23,9 +26,52 @@ function spawnVeh(x, y, z, w)
 	SetEntityAsMissionEntity(deilveryVeh, true, true)
 	SetVehicleEngineOn(deilveryVeh, true, true, true)
 	SetVehicleColours(deilveryVeh, 131, 74)
+    if Config.Debug then 
+        print('cs-foodjob: Vehicle Fueling')
+    end
 	exports[Config.FuelSystem]:SetFuel(deilveryVeh, 100.0)
 	local plate = GetVehicleNumberPlateText(deilveryVeh)
 	csVehKeys(plate)
+    if Config.Debug then 
+        print('cs-foodjob: Keys Given')
+    end
+end
+
+function spawnPickUpPed(x, y, z, heading)
+    local pickuppedModel = GetHashKey(Config.PickupPedModel)
+    RequestModel(pickuppedModel)
+    while not HasModelLoaded(pickuppedModel) do
+        Wait(1)
+    end
+    local pickupped = CreatePed(4, pickuppedModel, x, y, z, heading, false, false)
+    SetBlockingOfNonTemporaryEvents(pickupped, true)
+    SetPedDiesWhenInjured(pickupped, false)
+    SetEntityHeading(pickupped, heading)
+    SetPedCanPlayAmbientAnims(pickupped, true)
+	SetPedCanRagdollFromPlayerImpact(pickupped, false)
+	SetEntityInvincible(pickupped, true)
+	FreezeEntityPosition(pickupped, true)
+    if Config.Debug then 
+        print('cs-foodjob: PickUpPed Created')
+    end
+
+    if Config.Target == 'qb' then 
+        exports['qb-target']:AddTargetModelpickup(pedModel, {
+            options = {
+                {
+                    event = "cs-foodjob:server:pickupItem",
+                    icon = "fas fa-box",
+                    label = "Pickup Package",
+                    canInteract = function() 
+                        return activatedJob and onJob
+                    end
+                },
+            },
+            distance = 2.5
+        })
+    elseif Config.Target == 'ox' then
+        -- oxlogic
+    end
 end
 
 
@@ -43,6 +89,9 @@ CreateThread(function()
 	SetPedCanRagdollFromPlayerImpact(ped, false)
 	SetEntityInvincible(ped, true)
 	FreezeEntityPosition(ped, true)
+    if Config.Debug then 
+        print('cs-foodjob: Ped Created')
+    end
 
     if Config.Target == 'qb' then 
         exports['qb-target']:AddTargetModel(pedModel, {
@@ -72,17 +121,48 @@ CreateThread(function()
 end)
 
 RegisterNetEvent('cs-foodjob:startJob', function()
-    if not activatedJob and onJob then 
+    if Config.Debug then 
+        print('cs-foodjob: startJob found')
+    end
+
+    -- Make sure to initialize these variables if they are not defined globally
+    if not activatedJob then 
+        activatedJob = false
+    end
+
+    if not onJob then 
+        onJob = false
+    end
+
+    if not activatedJob and not onJob then 
+        if Config.Debug then 
+            print('cs-foodjob: passed activatedJob and onJob check')
+        end
+
         if not DoesEntityExist(Config.VehicleModel) then
-            SpawnDeliveryVehicle(vehicleSpawnLoc.x, vehicleSpawnLoc.y, vehicleSpawnLoc.z, vehicleSpawnLoc.w)
+            local randomIndex = math.random(1, #Config.PickupLocations)
+            local randomLocation = Config.PickupLocations[randomIndex]
+            spawnVeh(vehicleSpawnLoc.x, vehicleSpawnLoc.y, vehicleSpawnLoc.z, vehicleSpawnLoc.w)
+            if Config.Debug then 
+                print('cs-foodjob: spawned vehicle')
+            end
             if QBCore.Functions.GetPlayerData().money.cash >= Config.DepositPrice then 
                 TriggerServerEvent('cs-foodjob:payDeposit', Config.DepositPrice, "remove")
+                if Config.Debug then 
+                    print('cs-foodjob: paid deposit')
+                end
                 csNoti('Wait for an order to come in')
                 onJob = true
                 activatedJob = true
+                if Config.Debug then 
+                    print('cs-foodjob: waiting for order')
+                end
                 Wait(Config.OrderWaitTime)
+                if Config.Debug then 
+                    print('cs-foodjob: Waittime ended')
+                end
                 csNoti('An order has come in. Proceed to the waypoint.')
-                pickUpBlip = AddBlipForCoord(pickUpLocations[math.random(1, #pickUpLocations)])
+                pickUpBlip = AddBlipForCoord(randomLocation)
                 SetBlipSprite(pickUpBlip, Config.PickupBlip.Sprite)
                 SetBlipColour(pickUpBlip, Config.PickupBlip.Color)
                 SetBlipScale(pickUpBlip, Config.PickupBlip.Scale)
@@ -90,7 +170,10 @@ RegisterNetEvent('cs-foodjob:startJob', function()
                 BeginTextCommandSetBlipName("STRING")
                 AddTextComponentString(Config.PickupBlip.Text)
                 EndTextCommandSetBlipName(pickUpBlip)
-                
+                spawnPickUpPed(randomLocation.x, randomLocation.y, randomLocation.z, Config.PedHeading)
+                if Config.Debug then 
+                    print('cs-foodjob: pick up blip and ped created at the same location')
+                end
             else 
                 csNoti('You do not have enough money to pay the deposit')
             end
@@ -126,25 +209,40 @@ RegisterNetEvent('cs-foodjob:stopJob', function()
     end
 end)
 
-RegisterNetEvent('cs-foodjob:pickupFood', function()
+RegisterNetEvent('cs-foodjob:pickupFood')
+AddEventHandler('cs-foodjob:pickupFood', function()
+    if Config.Debug then 
+        print('cs-foodjob: pickupFood event found')
+    end
+
+    -- Your existing code for checking job status and triggering drop-off event
     if activatedJob and onJob then 
-        local distance = #(GetEntityCoords(PlayerPedId()) - pickUpLocations[math.random(1, #pickUpLocations)])
-        DrawMarker(2, pickUpLocations[math.random(1, #pickUpLocations)], 0, 0, 0, 0, 0, 0, 0.3, 0.2, -0.2, 100, 100, 155, 255, true, true, 0, false, nil, nil, false)
-        if distance < 2.5 then 
-            RemoveBlip(pickUpBlip)
-            csNoti('Picked up the food')
-            TriggerServerEvent('cs-foodjob:server:pickupItem')
-            Wait(1000)
-            csNoti('You have picked up the food. Proceed to the drop off location')
-            dropOffBlip = AddBlipForCoord(DropOffLocations[math.random(1, #DropOffLocations)])
-            SetBlipSprite(dropOffBlip, Config.DropOffBlip.Sprite)
-            SetBlipColour(dropOffBlip, Config.DropOffBlip.Color)
-            SetBlipScale(dropOffBlip, Config.DropOffBlip.Scale)
-            SetBlipAsShortRange(dropOffBlip, Config.DropOffBlip.ShortRange)
-            BeginTextCommandSetBlipName("STRING")
-            AddTextComponentString(Config.DropOffBlip.Text)
-            EndTextCommandSetBlipName(dropOffBlip)
+        if Config.Debug then 
+            print('cs-foodjob: pickupFood found')
         end
+
+        -- Trigger the server event and handle the response
+        TriggerServerEvent('cs-foodjob:server:pickupItem', function(success)
+            if success then
+                if Config.Debug then 
+                    print('cs-foodjob: pickupItem success')
+                end
+                csNoti('You have picked up the food. Proceed to the drop-off location')
+                dropOffBlip = AddBlipForCoord(DropOffLocations[math.random(1, #DropOffLocations)])
+                SetBlipSprite(dropOffBlip, Config.DropOffBlip.Sprite)
+                SetBlipColour(dropOffBlip, Config.DropOffBlip.Color)
+                SetBlipScale(dropOffBlip, Config.DropOffBlip.Scale)
+                SetBlipAsShortRange(dropOffBlip, Config.DropOffBlip.ShortRange)
+                BeginTextCommandSetBlipName("STRING")
+                AddTextComponentString(Config.DropOffBlip.Text)
+                EndTextCommandSetBlipName(dropOffBlip)
+            else
+                if Config.Debug then 
+                    print('cs-foodjob: pickupItem failure')
+                end
+                csNoti('Failed to pick up the food. Please try again.')
+            end
+        end)
     end
 end)
 
@@ -170,19 +268,3 @@ RegisterNetEvent('cs-foodjob:dropOffFood', function()
         end
     end
 end)
-
-
-
----------------------------------
---  Handlers
----------------------------------
-AddEventHandler('onClientResourceStart', function(resourceName)
-    csSpawnPed()
-end)
-
-AddEventHandler('onClientResourceStop', function(resourceName)
-    csRemovePed()
-end)
----------------------------------
--- End Handlers
----------------------------------

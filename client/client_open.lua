@@ -17,7 +17,6 @@ end
 function csVehKeys(plate)
     if Config.VehicleKeys == 'qb' then 
         TriggerServerEvent('vehiclekeys:client:SetOwner', plate)
-        -- Your Vehicle Keys logic here
     elseif Config.VehicleKeys == 'custom' then 
         -- Your Vehicle Keys logic here
     else 
