@@ -1,0 +1,1 @@
+https://raw.githubusercontent.com/reevesplayer/cs-studio-versioncheck/main/cs-foodjob
